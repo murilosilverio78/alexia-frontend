@@ -1,0 +1,105 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color: #0f172a;
+  background: #f8fafc;
+  font-family: "Lato", ui-sans-serif, system-ui, sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  min-width: 320px;
+  min-height: 100vh;
+  margin: 0;
+  color: #0f172a;
+  background: #f8fafc;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+::selection {
+  background: rgba(37, 99, 235, 0.22);
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-transparent text-text;
+  }
+
+  a {
+    @apply text-inherit no-underline;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    @apply font-serif text-text;
+  }
+
+  button,
+  input,
+  textarea {
+    font: inherit;
+  }
+
+  button,
+  [role="button"],
+  a {
+    @apply cursor-pointer;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
+
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+@layer components {
+  .card-base {
+    @apply rounded-[28px] border border-border bg-surface/95 shadow-soft backdrop-blur-sm;
+  }
+
+  .field {
+    @apply min-h-11 w-full rounded-2xl border border-border bg-surface px-4 py-3 text-base text-text outline-none transition duration-200 placeholder:text-text-muted/70 focus:border-primary-500 focus:ring-4 focus:ring-primary-500/20 motion-reduce:transition-none;
+  }
+
+  .button-primary {
+    @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl bg-primary-700 px-5 py-3 text-sm font-semibold text-white shadow-soft transition duration-200 hover:bg-primary-600 hover:shadow-elevated focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary-500/20 disabled:cursor-not-allowed disabled:opacity-60 motion-reduce:transition-none;
+  }
+
+  .button-secondary {
+    @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl border border-border bg-surface px-5 py-3 text-sm font-semibold text-text transition duration-200 hover:bg-surface-soft hover:shadow-soft focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary-500/20 motion-reduce:transition-none;
+  }
+
+  .progress-indeterminate {
+    @apply w-1/2 animate-indeterminate;
+  }
+}
