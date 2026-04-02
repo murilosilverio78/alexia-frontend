@@ -102,4 +102,12 @@ body {
   .progress-indeterminate {
     @apply w-1/2 animate-indeterminate;
   }
+
+  .reveal-on-scroll {
+    @apply opacity-0 translate-y-6 transition duration-300 motion-reduce:opacity-100 motion-reduce:translate-y-0 motion-reduce:transition-none;
+  }
+
+  .reveal-on-scroll.is-visible {
+    @apply opacity-100 translate-y-0;
+  }
 }

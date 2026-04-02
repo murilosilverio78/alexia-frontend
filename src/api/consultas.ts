@@ -1,11 +1,8 @@
-import { apiClient } from "./client";
 import { AxiosError } from "axios";
 import toast from "react-hot-toast";
-import {
-  mockGetStatus,
-  mockPostConsulta,
-  USE_MOCK,
-} from "./mock";
+import { apiClient } from "./client";
+import { salvarConsulta } from "./historico";
+import { mockGetStatus, mockPostConsulta, USE_MOCK } from "./mock";
 import type {
   ConsultaPayload,
   ConsultaResponse,
@@ -33,46 +30,6 @@ type ResultadoApiResponse = {
 type ToastedError = Error & {
   __toastShown?: boolean;
 };
-
-const HISTORICO_STORAGE_KEY = "alexia_historico";
-
-function lerHistoricoLocal(): HistoricoItem[] {
-  if (typeof window === "undefined") {
-    return [];
-  }
-
-  const rawHistorico = window.localStorage.getItem(HISTORICO_STORAGE_KEY);
-
-  if (!rawHistorico) {
-    return [];
-  }
-
-  try {
-    const parsed = JSON.parse(rawHistorico) as HistoricoItem[];
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-}
-
-function salvarHistoricoLocal(historico: HistoricoItem[]) {
-  if (typeof window === "undefined") {
-    return;
-  }
-
-  window.localStorage.setItem(
-    HISTORICO_STORAGE_KEY,
-    JSON.stringify(historico),
-  );
-}
-
-function adicionarItemHistorico(item: HistoricoItem) {
-  const historicoAtual = lerHistoricoLocal().filter(
-    (historicoItem) => historicoItem.case_id !== item.case_id,
-  );
-
-  salvarHistoricoLocal([item, ...historicoAtual]);
-}
 
 function buildApiErrorMessage(error: unknown): string {
   if (error instanceof AxiosError) {
@@ -112,16 +69,19 @@ export function notifyApiError(error: unknown): Error {
 
 export async function postConsulta(
   payload: ConsultaPayload,
+  uid?: string,
 ): Promise<ConsultaResponse> {
   if (USE_MOCK) {
     const mockResponse = await mockPostConsulta(payload);
 
-    adicionarItemHistorico({
-      case_id: mockResponse.case_id,
-      pergunta: payload.pergunta,
-      status: "processing",
-      criado_em: new Date().toISOString(),
-    });
+    if (uid) {
+      await salvarConsulta(uid, {
+        case_id: mockResponse.case_id,
+        pergunta: payload.pergunta,
+        status: "processing",
+        criado_em: new Date().toISOString(),
+      });
+    }
 
     return {
       case_id: mockResponse.case_id,
@@ -135,12 +95,14 @@ export async function postConsulta(
       email_destinatario: payload.email,
     });
 
-    adicionarItemHistorico({
-      case_id: data.case_id,
-      pergunta: payload.pergunta,
-      status: "processing",
-      criado_em: new Date().toISOString(),
-    });
+    if (uid) {
+      await salvarConsulta(uid, {
+        case_id: data.case_id,
+        pergunta: payload.pergunta,
+        status: "processing",
+        criado_em: new Date().toISOString(),
+      });
+    }
 
     return {
       case_id: data.case_id,
@@ -151,29 +113,6 @@ export async function postConsulta(
   }
 }
 
-export function atualizarStatusHistorico(
-  case_id: string,
-  status: HistoricoItem["status"],
-  nivel_confianca?: HistoricoItem["nivel_confianca"],
-) {
-  const historicoAtual = lerHistoricoLocal();
-
-  salvarHistoricoLocal(
-    historicoAtual.map((item) =>
-      item.case_id === case_id
-        ? {
-            ...item,
-            status,
-            nivel_confianca:
-              nivel_confianca === undefined
-                ? item.nivel_confianca
-                : nivel_confianca,
-          }
-        : item,
-    ),
-  );
-}
-
 export async function getStatusPolling(
   case_id: string,
 ): Promise<StatusApiResponse> {
@@ -181,7 +120,8 @@ export async function getStatusPolling(
     const mockResponse = await mockGetStatus(case_id);
 
     return {
-      status: mockResponse.status === "processing" ? "running" : mockResponse.status,
+      status:
+        mockResponse.status === "processing" ? "running" : mockResponse.status,
       error_message: mockResponse.error_message,
     };
   }
@@ -230,7 +170,9 @@ export async function getResultado(case_id: string): Promise<ConsultaResponse> {
   }
 
   try {
-    const { data } = await apiClient.get<ResultadoApiResponse>(`/consulta/${case_id}`);
+    const { data } = await apiClient.get<ResultadoApiResponse>(
+      `/consulta/${case_id}`,
+    );
 
     return {
       case_id: data.case_id,
@@ -249,11 +191,7 @@ export async function getResultado(case_id: string): Promise<ConsultaResponse> {
 
 export async function getHistorico(email: string): Promise<HistoricoItem[]> {
   void email;
-
-  return [...lerHistoricoLocal()].sort(
-    (a, b) =>
-      new Date(b.criado_em).getTime() - new Date(a.criado_em).getTime(),
-  );
+  return [];
 }
 
 export async function criarConsulta(

@@ -1,10 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
-import {
-  atualizarStatusHistorico,
-  getResultado,
-  getStatusPolling,
-} from "../api/consultas";
+import { atualizarConsulta } from "../api/historico";
+import { getResultado, getStatusPolling } from "../api/consultas";
 import type { ConsultaResponse } from "../types";
 
 type PollingCallback = (response?: ConsultaResponse, error?: Error) => void;
@@ -12,7 +9,11 @@ type PollingCallback = (response?: ConsultaResponse, error?: Error) => void;
 const POLLING_INTERVAL_MS = 5_000;
 const POLLING_TIMEOUT_MS = 600_000;
 
-export function usePolling(case_id?: string, onComplete?: PollingCallback) {
+export function usePolling(
+  case_id?: string,
+  uid?: string,
+  onComplete?: PollingCallback,
+) {
   const [data, setData] = useState<ConsultaResponse | null>(null);
   const [error, setError] = useState<Error | null>(null);
   const [isPolling, setIsPolling] = useState(false);
@@ -85,11 +86,22 @@ export function usePolling(case_id?: string, onComplete?: PollingCallback) {
             return;
           }
 
-          atualizarStatusHistorico(
-            case_id,
-            "completed",
-            resultado.nivel_confianca,
-          );
+          if (uid) {
+            const dadosAtualizar: Record<string, unknown> = {
+              status: "completed",
+            };
+
+            if (resultado.nivel_confianca !== undefined) {
+              dadosAtualizar.nivel_confianca = resultado.nivel_confianca;
+            }
+
+            const parecerResumo = resultado.parecer_final?.slice(0, 300);
+            if (parecerResumo !== undefined) {
+              dadosAtualizar.parecer_resumo = parecerResumo;
+            }
+
+            await atualizarConsulta(uid, case_id, dadosAtualizar);
+          }
           complete(resultado);
           return;
         }
@@ -99,7 +111,10 @@ export function usePolling(case_id?: string, onComplete?: PollingCallback) {
             response.error_message ?? "A consulta retornou erro no processamento.",
           );
           window.clearInterval(intervalId);
-          atualizarStatusHistorico(case_id, "error");
+          if (uid) {
+            const dadosAtualizar: Record<string, unknown> = { status: "error" };
+            await atualizarConsulta(uid, case_id, dadosAtualizar);
+          }
           complete(undefined, pollingError);
         }
       } catch (pollingError) {
@@ -129,7 +144,7 @@ export function usePolling(case_id?: string, onComplete?: PollingCallback) {
       setIsPolling(false);
       window.clearInterval(intervalId);
     };
-  }, [case_id, onComplete]);
+  }, [case_id, onComplete, uid]);
 
   return {
     data,

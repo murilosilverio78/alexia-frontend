@@ -1,29 +1,14 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import {
-  AlertCircle,
-  LoaderCircle,
-  Mail,
-  Pencil,
-  RefreshCw,
-  Scale,
-} from "lucide-react";
+import { AlertCircle, LoaderCircle, RefreshCw, Scale } from "lucide-react";
+import { buscarHistorico } from "../api/historico";
 import { getStatus } from "../api/consultas";
 import { ConfiancaBadge } from "../components/ConfiancaBadge";
 import { ParecerCard } from "../components/ParecerCard";
-import { useHistorico } from "../hooks/useHistorico";
+import { useAuth } from "../contexts/AuthContext";
 import type { ConsultaResponse, HistoricoItem } from "../types";
-
-const EMAIL_STORAGE_KEY = "alexia_email";
-
-function validarEmail(email: string) {
-  const trimmed = email.trim();
-  const atIndex = trimmed.indexOf("@");
-  const dotIndex = trimmed.lastIndexOf(".");
-
-  return atIndex > 0 && dotIndex > atIndex + 1 && dotIndex < trimmed.length - 1;
-}
 
 function formatarData(valor: string) {
   const data = new Date(valor);
@@ -65,21 +50,20 @@ function HistoryStatusBadge({ status }: { status: HistoricoItem["status"] }) {
 }
 
 export function Historico() {
-  const [email, setEmail] = useState("");
+  const { user } = useAuth();
+  const email = user?.email ?? "";
   const [consultaSelecionada, setConsultaSelecionada] =
     useState<ConsultaResponse | null>(null);
-  const [emailDraft, setEmailDraft] = useState("");
   const [selectedCaseId, setSelectedCaseId] = useState<string | null>(null);
   const [isLoadingParecer, setIsLoadingParecer] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const persistedEmail = window.localStorage.getItem(EMAIL_STORAGE_KEY) ?? "";
-    setEmail(persistedEmail);
-    setEmailDraft(persistedEmail);
-  }, []);
-
-  const { data, isLoading, isError, refetch, isFetching } = useHistorico(email);
+  const { data, isLoading, isError, refetch, isFetching } = useQuery({
+    queryKey: ["historico-firestore", user?.uid],
+    queryFn: () => buscarHistorico(user!.uid),
+    enabled: !!user?.uid,
+    refetchInterval: 30_000,
+  });
 
   const historicoOrdenado = useMemo(() => {
     const items = [...(data ?? [])];
@@ -98,33 +82,6 @@ export function Historico() {
       );
     });
   }, [data]);
-
-  const emailError =
-    emailDraft.trim().length > 0 && !validarEmail(emailDraft)
-      ? "Digite um email válido para consultar o histórico."
-      : null;
-
-  const handleBuscarHistorico = () => {
-    if (!validarEmail(emailDraft)) {
-      return;
-    }
-
-    const normalizedEmail = emailDraft.trim();
-    window.localStorage.setItem(EMAIL_STORAGE_KEY, normalizedEmail);
-    setEmail(normalizedEmail);
-    setConsultaSelecionada(null);
-    setSelectedCaseId(null);
-    setDetailError(null);
-  };
-
-  const handleTrocarEmail = () => {
-    window.localStorage.removeItem(EMAIL_STORAGE_KEY);
-    setEmail("");
-    setEmailDraft("");
-    setConsultaSelecionada(null);
-    setSelectedCaseId(null);
-    setDetailError(null);
-  };
 
   const handleToggleParecer = async (caseId: string) => {
     if (selectedCaseId === caseId) {
@@ -153,64 +110,6 @@ export function Historico() {
     }
   };
 
-  if (!email) {
-    return (
-      <section className="card-base px-6 py-6 sm:px-8">
-        <div className="max-w-2xl">
-          <p className="text-sm font-semibold uppercase tracking-[0.24em] text-primary-700">
-            Histórico
-          </p>
-          <h1 className="mt-3 font-serif text-[clamp(2.25rem,5vw,3.5rem)] font-semibold tracking-tight text-text">
-            Consulte seu histórico jurídico
-          </h1>
-          <p className="mt-3 text-base leading-7 text-text-muted">
-            Informe o email usado nas consultas para recuperar os pareceres e
-            acompanhar os processamentos pendentes.
-          </p>
-
-          <div className="mt-8 space-y-4">
-            <div>
-              <label
-                htmlFor="historico-email"
-                className="mb-2 block text-sm font-semibold text-text"
-              >
-                Seu email
-              </label>
-              <div className="relative">
-                <Mail
-                  className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted"
-                  aria-hidden="true"
-                />
-                <input
-                  id="historico-email"
-                  type="email"
-                  aria-label="Seu email para buscar histórico"
-                  placeholder="seu@email.com"
-                  className="field pl-11"
-                  value={emailDraft}
-                  onChange={(event) => setEmailDraft(event.target.value)}
-                />
-              </div>
-              {emailError ? (
-                <p className="mt-2 text-sm text-danger-fg">{emailError}</p>
-              ) : null}
-            </div>
-
-            <button
-              type="button"
-              onClick={handleBuscarHistorico}
-              disabled={!validarEmail(emailDraft)}
-              className="button-primary"
-            >
-              <Scale className="h-4 w-4" aria-hidden="true" />
-              Buscar meu histórico
-            </button>
-          </div>
-        </div>
-      </section>
-    );
-  }
-
   return (
     <section className="card-base px-6 py-6 sm:px-8">
       <div className="flex flex-col gap-4 border-b border-border pb-6 sm:flex-row sm:items-end sm:justify-between">
@@ -226,15 +125,6 @@ export function Historico() {
             abra o parecer completo quando já estiver concluído.
           </p>
         </div>
-
-        <button
-          type="button"
-          onClick={handleTrocarEmail}
-          className="button-secondary"
-        >
-          <Pencil className="h-4 w-4" aria-hidden="true" />
-          Trocar email
-        </button>
       </div>
 
       {isLoading ? (

@@ -4,12 +4,12 @@ import { postConsulta } from "../api/consultas";
 import { ParecerCard } from "../components/ParecerCard";
 import { StatusBadge } from "../components/StatusBadge";
 import { StatusProcessando } from "../components/StatusProcessando";
+import { useAuth } from "../contexts/AuthContext";
 import { usePolling } from "../hooks/usePolling";
 import type { ConsultaResponse } from "../types";
 
 const MAX_PERGUNTA_LENGTH = 5000;
 const MIN_PERGUNTA_LENGTH = 20;
-const EMAIL_STORAGE_KEY = "alexia_email";
 
 function validarEmail(email: string) {
   const trimmed = email.trim();
@@ -24,24 +24,12 @@ function validarPergunta(pergunta: string) {
 }
 
 export function NovaConsulta() {
+  const { user } = useAuth();
   const [pergunta, setPergunta] = useState("");
-  const [email, setEmail] = useState("");
   const [consultaAtiva, setConsultaAtiva] = useState<ConsultaResponse | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [resultadoErro, setResultadoErro] = useState<string | null>(null);
   const resultadoRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    const persistedEmail = window.localStorage.getItem(EMAIL_STORAGE_KEY);
-
-    if (persistedEmail) {
-      setEmail(persistedEmail);
-    }
-  }, []);
-
-  useEffect(() => {
-    window.localStorage.setItem(EMAIL_STORAGE_KEY, email);
-  }, [email]);
 
   useEffect(() => {
     if (!consultaAtiva && !resultadoErro) {
@@ -53,6 +41,8 @@ export function NovaConsulta() {
       block: "start",
     });
   }, [consultaAtiva, resultadoErro]);
+
+  const email = user?.email ?? "";
 
   const emailError = useMemo(() => {
     if (!email.trim()) {
@@ -100,7 +90,11 @@ export function NovaConsulta() {
     [],
   );
 
-  const { isPolling } = usePolling(pollingCaseId, handlePollingComplete);
+  const { isPolling } = usePolling(
+    pollingCaseId,
+    user?.uid,
+    handlePollingComplete,
+  );
 
   const isSubmitDisabled =
     !!emailError || !!perguntaError || isSubmitting || isPolling;
@@ -114,10 +108,13 @@ export function NovaConsulta() {
     setResultadoErro(null);
 
     try {
-      const response = await postConsulta({
-        pergunta: pergunta.trim(),
-        email: email.trim(),
-      });
+      const response = await postConsulta(
+        {
+          pergunta: pergunta.trim(),
+          email: email.trim(),
+        },
+        user?.uid,
+      );
 
       setConsultaAtiva(response);
 
@@ -177,7 +174,7 @@ export function NovaConsulta() {
                   placeholder="seu@email.com"
                   className="field pl-11"
                   value={email}
-                  onChange={(event) => setEmail(event.target.value)}
+                  readOnly
                 />
               </div>
               {emailError ? (
