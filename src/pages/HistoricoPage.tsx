@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { AlertCircle, RefreshCw } from "lucide-react";
@@ -23,72 +23,85 @@ export function HistoricoPage() {
   const { user } = useAuth();
   const { data, isLoading, isError, refetch, isFetching } =
     useHistorico(user?.email ?? "");
+  const dataRef = useRef(data);
+  const uidRef = useRef(user?.uid);
+  const refetchRef = useRef(refetch);
 
   useEffect(() => {
-    const processando = data?.filter((item) => item.status === "processing") ?? [];
-    if (!processando.length || !user?.uid) {
+    dataRef.current = data;
+  }, [data]);
+
+  useEffect(() => {
+    uidRef.current = user?.uid;
+  }, [user?.uid]);
+
+  useEffect(() => {
+    refetchRef.current = refetch;
+  }, [refetch]);
+
+  const verificarEAtualizar = async (
+    currentData: typeof data,
+    uid?: string,
+  ) => {
+    const processando =
+      currentData?.filter((item) => item.status === "processing") ?? [];
+
+    if (!processando.length || !uid) {
       return;
     }
 
+    let houveMudanca = false;
+
+    await Promise.all(
+      processando.map(async (item) => {
+        const status = await getStatusPolling(item.case_id);
+
+        if (status.status === "completed") {
+          const resultado = await getResultado(item.case_id);
+
+          await atualizarConsulta(uid, item.case_id, {
+            status: "completed",
+            nivel_confianca: resultado.nivel_confianca,
+            parecer_resumo: resultado.parecer_final?.slice(0, 300),
+          });
+          houveMudanca = true;
+          return;
+        }
+
+        if (status.status === "error") {
+          await atualizarConsulta(uid, item.case_id, { status: "error" });
+          houveMudanca = true;
+        }
+      }),
+    );
+
+    if (houveMudanca) {
+      await refetchRef.current();
+    }
+  };
+
+  useEffect(() => {
     let cancelled = false;
 
-    const atualizarProcessando = async () => {
-      await Promise.all(
-        processando.map(async (item) => {
-          const status = await getStatusPolling(item.case_id);
-
-          if (cancelled) {
-            return;
-          }
-
-          if (status.status === "completed") {
-            const resultado = await getResultado(item.case_id);
-            if (cancelled) {
-              return;
-            }
-
-            await atualizarConsulta(user.uid, item.case_id, {
-              status: "completed",
-              nivel_confianca: resultado.nivel_confianca,
-              parecer_resumo: resultado.parecer_final?.slice(0, 300),
-            });
-            return;
-          }
-
-          if (status.status === "error") {
-            await atualizarConsulta(user.uid, item.case_id, { status: "error" });
-          }
-        }),
-      );
-
-      if (!cancelled) {
-        await refetch();
+    const executar = async () => {
+      if (cancelled) {
+        return;
       }
+
+      await verificarEAtualizar(dataRef.current, uidRef.current);
     };
 
-    void atualizarProcessando();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [data, refetch, user?.uid]);
-
-  useEffect(() => {
-    const processingCount =
-      data?.filter((item) => item.status === "processing").length ?? 0;
-
-    if (!processingCount) {
-      return;
-    }
+    void executar();
 
     const intervalId = window.setInterval(() => {
-      void refetch();
+      void executar();
     }, 10_000);
 
     return () => {
+      cancelled = true;
       window.clearInterval(intervalId);
     };
-  }, [data, refetch]);
+  }, []);
 
   return (
     <section className="card-base px-6 py-6 sm:px-8">
