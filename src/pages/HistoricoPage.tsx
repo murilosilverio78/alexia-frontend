@@ -1,8 +1,12 @@
+import { useEffect } from "react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { AlertCircle, RefreshCw } from "lucide-react";
+import { atualizarConsulta } from "../api/historico";
+import { getResultado, getStatusPolling } from "../api/consultas";
 import { ConfiancaBadge } from "../components/ConfiancaBadge";
 import { StatusBadge } from "../components/StatusBadge";
+import { useAuth } from "../contexts/AuthContext";
 import { useHistorico } from "../hooks/useHistorico";
 
 function formatarData(valor: string) {
@@ -16,8 +20,75 @@ function formatarData(valor: string) {
 }
 
 export function HistoricoPage() {
+  const { user } = useAuth();
   const { data, isLoading, isError, refetch, isFetching } =
-    useHistorico("desenvolvimento@alexia.ai");
+    useHistorico(user?.email ?? "");
+
+  useEffect(() => {
+    const processando = data?.filter((item) => item.status === "processing") ?? [];
+    if (!processando.length || !user?.uid) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const atualizarProcessando = async () => {
+      await Promise.all(
+        processando.map(async (item) => {
+          const status = await getStatusPolling(item.case_id);
+
+          if (cancelled) {
+            return;
+          }
+
+          if (status.status === "completed") {
+            const resultado = await getResultado(item.case_id);
+            if (cancelled) {
+              return;
+            }
+
+            await atualizarConsulta(user.uid, item.case_id, {
+              status: "completed",
+              nivel_confianca: resultado.nivel_confianca,
+              parecer_resumo: resultado.parecer_final?.slice(0, 300),
+            });
+            return;
+          }
+
+          if (status.status === "error") {
+            await atualizarConsulta(user.uid, item.case_id, { status: "error" });
+          }
+        }),
+      );
+
+      if (!cancelled) {
+        await refetch();
+      }
+    };
+
+    void atualizarProcessando();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [data, refetch, user?.uid]);
+
+  useEffect(() => {
+    const processingCount =
+      data?.filter((item) => item.status === "processing").length ?? 0;
+
+    if (!processingCount) {
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      void refetch();
+    }, 10_000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [data, refetch]);
 
   return (
     <section className="card-base px-6 py-6 sm:px-8">

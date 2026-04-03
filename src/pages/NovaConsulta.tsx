@@ -10,6 +10,15 @@ import type { ConsultaResponse } from "../types";
 
 const MAX_PERGUNTA_LENGTH = 5000;
 const MIN_PERGUNTA_LENGTH = 20;
+const CONSULTA_STORAGE_KEY = "alexia_consulta_ativa";
+const CONSULTA_TIMEOUT_MS = 10 * 60 * 1000;
+
+type ConsultaPeristida = {
+  case_id: string;
+  status: string;
+  pergunta: string;
+  started_at: number;
+};
 
 function validarEmail(email: string) {
   const trimmed = email.trim();
@@ -30,6 +39,33 @@ export function NovaConsulta() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [resultadoErro, setResultadoErro] = useState<string | null>(null);
   const resultadoRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const consultaPersistida = localStorage.getItem(CONSULTA_STORAGE_KEY);
+    if (!consultaPersistida) {
+      return;
+    }
+
+    try {
+      const parsed = JSON.parse(consultaPersistida) as ConsultaPeristida;
+      if (parsed.status !== "processing") {
+        return;
+      }
+
+      if (Date.now() - parsed.started_at >= CONSULTA_TIMEOUT_MS) {
+        localStorage.removeItem(CONSULTA_STORAGE_KEY);
+        return;
+      }
+
+      setConsultaAtiva({
+        case_id: parsed.case_id,
+        status: "processing",
+      });
+      setPergunta(parsed.pergunta);
+    } catch {
+      localStorage.removeItem(CONSULTA_STORAGE_KEY);
+    }
+  }, []);
 
   useEffect(() => {
     if (!consultaAtiva && !resultadoErro) {
@@ -73,6 +109,8 @@ export function NovaConsulta() {
 
   const handlePollingComplete = useCallback(
     (response?: ConsultaResponse, error?: Error) => {
+      localStorage.removeItem(CONSULTA_STORAGE_KEY);
+
       if (response) {
         setConsultaAtiva(response);
         setResultadoErro(
@@ -95,9 +133,14 @@ export function NovaConsulta() {
     user?.uid,
     handlePollingComplete,
   );
+  const hasProcessingConsulta = consultaAtiva?.status === "processing";
 
   const isSubmitDisabled =
-    !!emailError || !!perguntaError || isSubmitting || isPolling;
+    !!emailError ||
+    !!perguntaError ||
+    isSubmitting ||
+    isPolling ||
+    hasProcessingConsulta;
 
   const handleSubmit = async () => {
     if (isSubmitDisabled) {
@@ -117,6 +160,15 @@ export function NovaConsulta() {
       );
 
       setConsultaAtiva(response);
+      localStorage.setItem(
+        CONSULTA_STORAGE_KEY,
+        JSON.stringify({
+          case_id: response.case_id,
+          status: response.status,
+          pergunta: pergunta.trim(),
+          started_at: Date.now(),
+        } satisfies ConsultaPeristida),
+      );
 
       if (response.status === "error") {
         setResultadoErro(response.message ?? "A consulta retornou erro.");
@@ -133,6 +185,7 @@ export function NovaConsulta() {
   };
 
   const handleReset = () => {
+    localStorage.removeItem(CONSULTA_STORAGE_KEY);
     setPergunta("");
     setConsultaAtiva(null);
     setResultadoErro(null);
@@ -198,6 +251,7 @@ export function NovaConsulta() {
                   placeholder="Ex.: Um empregado demitido sem justa causa pode exigir integração das horas extras habituais no cálculo das verbas rescisórias mesmo sem previsão expressa em acordo coletivo?"
                   className="field min-h-[176px] resize-y pb-10"
                   value={pergunta}
+                  disabled={hasProcessingConsulta}
                   onChange={(event) => setPergunta(event.target.value)}
                 />
                 <span className="pointer-events-none absolute bottom-3 right-4 text-xs font-medium text-text-muted">
